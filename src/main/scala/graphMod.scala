@@ -39,16 +39,28 @@ class graphMod {
    *
    */
 
-  /* The memoization mechanism. Maps stage number to message received in that 
-   * stage. The message recieved is the 'reduced message', that is, the length
-   * of the shortes path so far.  */
-  type Memo = Map[Int,Double]
+  /* Messge digest. Stores all incoming messages, indexed by VertexId, for a particular stage.
+   */
+  type MsgDigest = Map[VertexId,Double]
+
+  /* The memoization mechanism. Maps stage number to message digest received in that 
+   * stage.  */
+  case class MemoInfo(memoDist : Double, memoMessages : MsgDigest)
+  type Memo = Map[Int,MemoInfo]
 
   /* Vertex attribute type -- a Tuple4, where the first component is a flag 
    * indicating whether vertex should participate or not, the second component 
    * is the stage number, the third is the shortest path length so far, and 
    * the fourth component is the Memo. */
-  type Vattr = (Bool, Int, Double, Memo)
+  case class Vattr(
+    affected : Boolean,
+    globalStage : Int,
+    vertexStage : Int,
+    participate : Boolean,
+    distSoFar : Double,
+    memo : Memo )
+
+  private def initMemo() : Memo = Map[Int,(Double,Map[VertexId,Double]())]()
 
   /* Increment map. Not clear if I will need it. 
    * Note that in my case, SPMap is just a single value, the first component
@@ -70,32 +82,83 @@ class graphMod {
    * each vertex.
    */
 
-  /* vertexProgram. This is run on every vertex. Recall that this is executed
-   * *after* the innerJoin in Pregel. So the inputs are (id, oldState, 
-   * newState). The result of this join is (vid, Vattr, dist). First, check if
-   * this vertex will participate, by comparing dist with memoized message 
-   * for this state. If so, set 'participate' bit, and update state. 
-   */
-  def vertexProgram(id : VertexId, attr : Vattr, msg : dist) : Vattr = {
-    if (participate(attr, msg)) {
-      val newParticipate = true
-      val currentStage = attr._2
-      // new memo
-      val newMemo = attr._4 + (currentStage -> msg)
-      // update dist
-      val newDist = msg
-      // return new attr
-      return (newParticipate, currentStage, newDist, newMemo) }
-      else 
-        return attr
-    }
+  private def mergeMsgs(memoMsg : MsgDigest, newMsg : MsgDigest) : MsgDigest = 
+    memoMsg ++ newMsg
+
+  /* Takes as input attr, which contains previously memoized messages, merges that with
+   * new messages received, appends current state, and computes min. */
+  private def computeState(attr : Vattr, messages : MsgDigest) : Double = {
+    val mergedMessages = mergeMsgs(attr.memo(attr.globalStage).memoMessages, messages)
+    return (attr.distSoFar :: mergedMessages.values.toList).reduce((a,b) => math.min(a,b))
   }
+
+  /* Demo participate function. */
+  private def participate(attr : Vattr, messages : MsgDigest) : Boolean = {
+    val memoizedInfo =  attr.memo.getOrElse(attr.globalStage,Map[Int,MemoInfo]())
+    // return true if no previously memoized messages
+    if (memoizedInfo.isEmpty) return true
+    else {
+      val memoDist = memoizedInfo.memoDist
+      val memoMsgs = memoizedInfo.memoMessages
+      val currentDist = computeState(attr, messages)
+      if (memoMsgs != messages) return true
+      if (currentDist != memoState) return true
+      if (attr.affected) return true
+      else return false
+      
+    }
+
+  }
+
+  /* vertexProgram. This is run on every vertex. Recall that this is executed
+   * *after* the innerJoin in Pregel. The result of this join is (vid, Vattr, msgDigest).
+   * 1. set participation bit
+   * 2. update vertex stage
+   * 3. merge messages with memoized messages
+   * 4. update current shortest distance
+   * 5. memoize current state */
+  def vertexProgram(id : VertexId, attr : Vattr, messages : MsgDigest) : Vattr = {
+    val newParticipate = participate(attr,messages)
+    val newVertexStage = attr.globalStage
+    val mergedMessages = mergeMsg(attr, messages) // returns map with updated messages
+    val newDist = computeState(attr, messages)
+    val newMemo = attr.memo + (attr.globalStage -> MemoInfo(
+      newDist,
+      mergedMessages)
+    return Vattr(
+      attr.affected, 
+      attr.globalStage, 
+      newVertexStage, 
+      newParticipate, 
+      newDist,
+      newMemo )
+    }
+
+  private def isParticipateCurrent(attr : Vattr) : Boolean = attr.globalStage == attr.vertexStage
+
+  private def activeCurrentStage(attr : Vattr) : Boolean = {
+    // Check if vertex was active in the current stage, in the true execution. Check
+    // if the memoized version is empty or not.
+    return attr.Memo contains attr.globalStage
+  }
+
 
   /* sendMsg : looks at a triplet, and prepares message for the destination vertex.
    */
   def sendMessage(edge: EdgeTriplet[Vattr,_]) : Iterator[(VertexId, Vattr)] = {
-    // for edges of wt 1 at the moment. Edit this for general weights.
-    val newDist = edge.srcAttr._3+1
+    /* If participation status current, then follow that. Else, check if this vertex is 
+     * affected *and* expecting a message. In this case, send message. */
+    if (isParticipateCurrent(edge.srcAttr) {
+      // check for receiver state optimization.
+      if (edge.srcAttr.participate) return Map(srcVertexId -> edge.srcAttr.distSoFar + 1.0)
+      else return Map[VertexId,Double]()
+    }
+    else {
+      // check if vertex is affected *and* was supposed to send message.
+      if (edge.srcAttr.affected && activeCurrentStage(edge.srcAttr)) 
+        return Map(srcVertexId -> edge.srcAttr.distSoFar + 1.0)
+      else return Map[VertexId, Double]()
+    }
 
     // change for landmarks
     if (edge.dstAttr._3 > newDist) Iterator((edge.dstId, newDist))
@@ -103,11 +166,54 @@ class graphMod {
   }
 
   //def run()
+  
+  /* Pregel with stage numbers.
+   */
 
-  def shortestPathSimple(gr:Graph[Int,Double]) : Graph[Int,Double] = {
-    // From the CloudDB12 paper. -- cite --
+  def run(graph: Graph, initalMessage ...) : Graph = {
+    // prepare vertices
+    var g = graph.mapVertices((vid, vdata) => vprog(vid, vdata, initialMsg)).cache()
 
+    // compute Stage 0 messages.
+    var messages = g.mapReduceTriplets(sendMessage, addMaps)
+    var activeMessages = messages.count()
+
+    // main loop, decide when to stop -- when no new messages.
+    var prevG : Graph = null
+    var i = 0
+    while (activeMessages > 0 && i < maxIterations) {
+      // receive messages
+      var newVerts = g.vertices.innerJoin(messages)(vertexProgram).cache()
+
+      // update graph with new vertices
+      prevG  = g
+      g = g.outerJoinVertices(newVerts) { (vid, oldopt, newopt) =>
+        val attr = newopt.getOrElse(oldopt)
+        (attr._1, attr._2+1, attr._3, attr._4) }
+      g.cache()
+
+      val oldMessages = messages
+
+      // next round of messages
+      messages = g.mapReduceTriplets(sendMessage, addMaps) // check Some(...)
+      activeMessages = messages.count()
+
+      // Unpersist the RDDs hidden by newly-materialized RDDs
+      oldMessages.unpersist(blocking=false)
+      newVerts.unpersist(blocking=false)
+      prevG.unpersistVertices(blocking=false)
+      prevG.edges.unpersist(blocking=false)
+      // count the iteration
+      i += 1
+
+    
+    } //while 
+
+
+
+      
   }
+
 
   /* TO IMPROVE
    * val spGraph = graph.mapVertices { (vid, attr) =>
