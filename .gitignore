@@ -1,10 +1,15 @@
 # Created by https://www.gitignore.io
 
+# manual helper scripts
+*.sh
+
 # Vim swap files.
 *.swp
 
 # Mac DS-Store
 .DS_Store
+
+#############
 
 ### Scala ###
 *.class

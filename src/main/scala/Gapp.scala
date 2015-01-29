@@ -16,7 +16,7 @@ object Gapp {
      * string "srcId dstId weight".
      * 'file' is set to a MappedRDD object.
      */
-    val file = sc.textFile("/user/3.gr")
+    val file = sc.textFile("/user/z.gr")
 
 
     //  Map 'file' to EdgeRDD, by parsing records appropriately.
@@ -31,11 +31,13 @@ object Gapp {
      * TODO: Check spark unit test moduel.
      */
 
-    val gmod = new graphMod()
+    /*val gmod = new graphMod()
     val newEd = "2 0 555"
-    val ngr = gmod.updateEdge(newEd, gr)
+    val ngr = gmod.updateEdge(newEd, gr) */
     //debug
-    ngr.edges.collect().foreach(println)
+    //ngr.edges.collect().foreach(println)
+    val gmod = new graphMod()
+    gmod.run(gr)
 
   }
 }

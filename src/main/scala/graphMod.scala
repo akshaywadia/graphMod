@@ -6,7 +6,7 @@ import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
 
 
-class graphMod {
+class graphMod extends java.io.Serializable {
 
   /*
    * Updates edges for an existing graph.
@@ -60,7 +60,7 @@ class graphMod {
     distSoFar : Double,
     memo : Memo )
 
-  private def initMemo() : Memo = Map[Int,(Double,Map[VertexId,Double]())]()
+  //private def initMemo() : Memo = Map[Int,(Double,Map[VertexId,Double]())]()
 
   /* Increment map. Not clear if I will need it. 
    * Note that in my case, SPMap is just a single value, the first component
@@ -151,18 +151,17 @@ class graphMod {
   def sendMessage(edge: EdgeTriplet[Vattr,_]) : Iterator[(VertexId, MsgDigest)] = {
     /* If participation status current, then follow that. Else, check if this vertex is 
      * affected *and* expecting a message. In this case, send message. */
-    if (isParticipateCurrent(edge.srcAttr) {
+    if (isParticipateCurrent(edge.srcAttr)) {
       // check for receiver state optimization.
-      if (edge.srcAttr.participate) return Iterator((edge.dstId,Map(srcVertexId -> edge.srcAttr.distSoFar + 1.0)))
+      if (edge.srcAttr.participate) return Iterator((edge.dstId,Map(edge.srcId -> (edge.srcAttr.distSoFar + 1.0))))
       else return Iterator.empty
     }
     else {
       // check if vertex is affected *and* was supposed to send message.
       if (edge.srcAttr.affected && activeCurrentStage(edge.srcAttr)) 
-        return Iterator((edge.dstId,Map(srcVertexId -> edge.srcAttr.distSoFar + 1.0)))
+        return Iterator((edge.dstId,Map(edge.srcId -> (edge.srcAttr.distSoFar + 1.0))))
       else return Iterator.empty
     }
-
   }
 
   //def run()
@@ -170,36 +169,39 @@ class graphMod {
   /* Pregel with stage numbers.
    */
 
-  def run(graph: Graph, 
-    maxIterations : Int = 10,
-    activeDirection : EdgeDirection = EdgeDirectino.Either)
+  def run(graph: Graph[Int,Double], 
+    maxIterations : Int = 10)
+/*    activeDirection : EdgeDirection = EdgeDirectino.Either)
    (vertexProg : (VertexId, Vattr, MsgDigest) => Vattr,
      sendMsg : EdgeTriplet[Vattr,_] => Iterator[(VertexId,Vattr)],
-     mergeMsg : (MsgDigest, MsgDigest) => MsgDigest)
-  : Graph = {
+     mergeMsg : (MsgDigest, MsgDigest) => MsgDigest) */
+  : Graph[Vattr,Double] = {
     // prepare vertices
-    var g = graph.mapVertices((vid, vdata) => vprog(vid, vdata, initialMsg)).cache()
-
-    var g = graph.mapVertices{ (vid,vdata) =>
-      if (vid == 0) Vattr(true, 0, 0, true, 0.0, Map[Int,MemInfo]())
-      else Vattr(true, 0, 0, false, 0.0, Map[Int,MemInfo]())
+    val initVertexMsg = Vattr(true,0,0,false,Double.MaxValue,Map[Int,MemoInfo]())
+    val initVertexMsgSource = Vattr(true,0,0,true,0.0,Map[Int,MemoInfo]())
+    
+    // serializable issue
+    val setVertexAttr = (vid :VertexId, vdata : Int) => if (vid ==0) initVertexMsgSource else initVertexMsg
+    var g = graph.mapVertices(setVertexAttr).cache()
+//    var g = graph.mapVertices((vid, vdata) => if (vid == 0) initVertexMsgSource
+//      else initVertexMsg).cache()
 
     // compute Stage 0 messages.
-    var messages = g.mapReduceTriplets(sendMsg, mergeMsg)
+    var messages = g.mapReduceTriplets(sendMessage, mergeMsgs)
     var activeMessages = messages.count()
 
     // main loop, decide when to stop -- when no new messages.
-    var prevG : Graph = null
+    var prevG : Graph[Vattr,Double] = null
     var i = 0
-    while (i < maxIterations) {
+    //while (i < maxIterations) {
       // receive messages
-      var newVerts = g.vertices.innerJoin(messages)(vertexProg).cache()
+      var newVerts = g.vertices.innerJoin(messages)(vertexProgram).cache()
 
       // update graph with new vertices
       prevG  = g
       g = g.outerJoinVertices(newVerts) { (vid, oldAttr, newAttr) =>
         val attr = newAttr.getOrElse(oldAttr)
-        (attr.affected,
+        Vattr(attr.affected,
           attr.globalStage + 1, 
           attr.vertexStage,
           false,
@@ -212,19 +214,26 @@ class graphMod {
       val oldMessages = messages
 
       // next round of messages
-      messages = g.mapReduceTriplets(sendMsg, mergeMsg) // check Some(...)
+      messages = g.mapReduceTriplets(sendMessage, mergeMsgs) // check Some(...)
       activeMessages = messages.count()
 
+      //debug
+      g.vertices.collect().mkString("\n")
       // Unpersist the RDDs hidden by newly-materialized RDDs
       oldMessages.unpersist(blocking=false)
       newVerts.unpersist(blocking=false)
       prevG.unpersistVertices(blocking=false)
       prevG.edges.unpersist(blocking=false)
       // count the iteration
+      
       i += 1
 
+      return g
+
+
+
     
-    } //while 
+    //} //while 
   }
 
 
