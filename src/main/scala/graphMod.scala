@@ -88,26 +88,27 @@ class graphMod {
   /* Takes as input attr, which contains previously memoized messages, merges that with
    * new messages received, appends current state, and computes min. */
   private def computeState(attr : Vattr, messages : MsgDigest) : Double = {
-    val mergedMessages = mergeMsgs(attr.memo(attr.globalStage).memoMessages, messages)
+    val msgDigest = if (attr.memo contains attr.globalStage) attr.memo(attr.globalStage).memoMessages else Map[Long,Double]()
+    val mergedMessages = mergeMsgs(msgDigest, messages)
     return (attr.distSoFar :: mergedMessages.values.toList).reduce((a,b) => math.min(a,b))
   }
 
   /* Demo participate function. */
   private def participate(attr : Vattr, messages : MsgDigest) : Boolean = {
-    val memoizedInfo =  attr.memo.getOrElse(attr.globalStage,Map[Int,MemoInfo]())
+    val memo = attr.memo
+    if (!(memo contains attr.globalStage)) return true
     // return true if no previously memoized messages
-    if (memoizedInfo.isEmpty) return true
     else {
-      val memoDist = memoizedInfo.memoDist
-      val memoMsgs = memoizedInfo.memoMessages
+      val memoInfo = memo(attr.globalStage)
+      val memoDist = memoInfo.memoDist
+      val memoMsgs = memoInfo.memoMessages
       val currentDist = computeState(attr, messages)
       if (memoMsgs != messages) return true
-      if (currentDist != memoState) return true
+      if (currentDist != memoDist) return true
       if (attr.affected) return true
       else return false
       
     }
-
   }
 
   /* vertexProgram. This is run on every vertex. Recall that this is executed
@@ -120,18 +121,20 @@ class graphMod {
   def vertexProgram(id : VertexId, attr : Vattr, messages : MsgDigest) : Vattr = {
     val newParticipate = participate(attr,messages)
     val newVertexStage = attr.globalStage
-    val mergedMessages = mergeMsg(attr, messages) // returns map with updated messages
+    val memoizedMsgDigest  = if (attr.memo contains attr.globalStage) attr.memo(attr.globalStage).memoMessages else Map[Long,Double]()
+    
+    val mergedMessages = mergeMsgs(memoizedMsgDigest,messages) // returns map with updated messages
     val newDist = computeState(attr, messages)
     val newMemo = attr.memo + (attr.globalStage -> MemoInfo(
       newDist,
-      mergedMessages)
+      mergedMessages))
     return Vattr(
       attr.affected, 
       attr.globalStage, 
       newVertexStage, 
       newParticipate, 
       newDist,
-      newMemo )
+      newMemo ) 
     }
 
   private def isParticipateCurrent(attr : Vattr) : Boolean = attr.globalStage == attr.vertexStage
@@ -139,30 +142,27 @@ class graphMod {
   private def activeCurrentStage(attr : Vattr) : Boolean = {
     // Check if vertex was active in the current stage, in the true execution. Check
     // if the memoized version is empty or not.
-    return attr.Memo contains attr.globalStage
+    return attr.memo contains attr.globalStage
   }
 
 
   /* sendMsg : looks at a triplet, and prepares message for the destination vertex.
    */
-  def sendMessage(edge: EdgeTriplet[Vattr,_]) : Iterator[(VertexId, Vattr)] = {
+  def sendMessage(edge: EdgeTriplet[Vattr,_]) : Iterator[(VertexId, MsgDigest)] = {
     /* If participation status current, then follow that. Else, check if this vertex is 
      * affected *and* expecting a message. In this case, send message. */
     if (isParticipateCurrent(edge.srcAttr) {
       // check for receiver state optimization.
-      if (edge.srcAttr.participate) return Map(srcVertexId -> edge.srcAttr.distSoFar + 1.0)
-      else return Map[VertexId,Double]()
+      if (edge.srcAttr.participate) return Iterator((edge.dstId,Map(srcVertexId -> edge.srcAttr.distSoFar + 1.0)))
+      else return Iterator.empty
     }
     else {
       // check if vertex is affected *and* was supposed to send message.
       if (edge.srcAttr.affected && activeCurrentStage(edge.srcAttr)) 
-        return Map(srcVertexId -> edge.srcAttr.distSoFar + 1.0)
-      else return Map[VertexId, Double]()
+        return Iterator((edge.dstId,Map(srcVertexId -> edge.srcAttr.distSoFar + 1.0)))
+      else return Iterator.empty
     }
 
-    // change for landmarks
-    if (edge.dstAttr._3 > newDist) Iterator((edge.dstId, newDist))
-    else Iterator.empty
   }
 
   //def run()
@@ -170,32 +170,49 @@ class graphMod {
   /* Pregel with stage numbers.
    */
 
-  def run(graph: Graph, initalMessage ...) : Graph = {
+  def run(graph: Graph, 
+    maxIterations : Int = 10,
+    activeDirection : EdgeDirection = EdgeDirectino.Either)
+   (vertexProg : (VertexId, Vattr, MsgDigest) => Vattr,
+     sendMsg : EdgeTriplet[Vattr,_] => Iterator[(VertexId,Vattr)],
+     mergeMsg : (MsgDigest, MsgDigest) => MsgDigest)
+  : Graph = {
     // prepare vertices
     var g = graph.mapVertices((vid, vdata) => vprog(vid, vdata, initialMsg)).cache()
 
+    var g = graph.mapVertices{ (vid,vdata) =>
+      if (vid == 0) Vattr(true, 0, 0, true, 0.0, Map[Int,MemInfo]())
+      else Vattr(true, 0, 0, false, 0.0, Map[Int,MemInfo]())
+
     // compute Stage 0 messages.
-    var messages = g.mapReduceTriplets(sendMessage, addMaps)
+    var messages = g.mapReduceTriplets(sendMsg, mergeMsg)
     var activeMessages = messages.count()
 
     // main loop, decide when to stop -- when no new messages.
     var prevG : Graph = null
     var i = 0
-    while (activeMessages > 0 && i < maxIterations) {
+    while (i < maxIterations) {
       // receive messages
-      var newVerts = g.vertices.innerJoin(messages)(vertexProgram).cache()
+      var newVerts = g.vertices.innerJoin(messages)(vertexProg).cache()
 
       // update graph with new vertices
       prevG  = g
-      g = g.outerJoinVertices(newVerts) { (vid, oldopt, newopt) =>
-        val attr = newopt.getOrElse(oldopt)
-        (attr._1, attr._2+1, attr._3, attr._4) }
+      g = g.outerJoinVertices(newVerts) { (vid, oldAttr, newAttr) =>
+        val attr = newAttr.getOrElse(oldAttr)
+        (attr.affected,
+          attr.globalStage + 1, 
+          attr.vertexStage,
+          false,
+          attr.distSoFar,
+          attr.memo
+          )
+      }
       g.cache()
 
       val oldMessages = messages
 
       // next round of messages
-      messages = g.mapReduceTriplets(sendMessage, addMaps) // check Some(...)
+      messages = g.mapReduceTriplets(sendMsg, mergeMsg) // check Some(...)
       activeMessages = messages.count()
 
       // Unpersist the RDDs hidden by newly-materialized RDDs
@@ -208,10 +225,6 @@ class graphMod {
 
     
     } //while 
-
-
-
-      
   }
 
 
