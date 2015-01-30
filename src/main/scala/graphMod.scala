@@ -18,6 +18,7 @@ class graphMod extends java.io.Serializable {
   case class MemoInfo(memoDist : Double, memoMessages : MsgDigest)
   type Memo = Map[Int,MemoInfo]
 
+
   /* Vertex attribute type -- a Tuple4, where the first component is a flag 
    * indicating whether vertex should participate or not, the second component 
    * is the stage number, the third is the shortest path length so far, and 

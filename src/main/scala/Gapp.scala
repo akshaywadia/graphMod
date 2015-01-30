@@ -41,7 +41,7 @@ object Gapp {
     val gmod = new graphMod()
     gmod.run(gr)
 
-    gr = gmod.updateEdge("0 2 1", ggr)
+    gr = gmod.updateEdge("0 2 1", gr)
     gmod.run(gr,dbg=true)
 
   }
