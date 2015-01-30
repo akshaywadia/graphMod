@@ -8,36 +8,6 @@ import org.apache.spark.rdd.RDD
 
 class graphMod extends java.io.Serializable {
 
-  /*
-   * Updates edges for an existing graph.
-   * Params -- 
-   * 
-   * edge      :   String, with format "srcID dstId weight", which are Long,
-   * Long, and Double
-   *
-   * gr        :   Graphp[Int,Double]
-   *
-   * @return   :   new graph with updated edge weight.
-   */
-  
-  def updateEdge(edge:String, gr:Graph[Int,Double]) : Graph[Int,Double] = {
-    // parse edge into edge components
-    val comps = edge.split(" ")
-    val src = comps(0).toInt
-    val dst = comps(1).toInt
-    val attr = comps(2).toDouble
-
-    // update weight
-    return gr.mapEdges{ ed =>
-      if (ed.srcId == src && ed.dstId == dst) attr else ed.attr
-    }
-  }
-
-  /**************
-   *    ALTERING 
-   *    spark/graphx/src/main/scala/org/apache/spark/graphx/lib/ShortestPaths.scala
-   *
-   */
 
   /* Messge digest. Stores all incoming messages, indexed by VertexId, for a particular stage.
    */
@@ -59,6 +29,37 @@ class graphMod extends java.io.Serializable {
     participate : Boolean,
     distSoFar : Double,
     memo : Memo )
+  /*
+   * Updates edges for an existing graph.
+   * Params -- 
+   * 
+   * edge      :   String, with format "srcID dstId weight", which are Long,
+   * Long, and Double
+   *
+   * gr        :   Graphp[Int,Double]
+   *
+   * @return   :   new graph with updated edge weight.
+   */
+  
+  def updateEdge(edge:String, gr:Graph[Vattr,Double]) : Graph[Vattr,Double] = {
+    // parse edge into edge components
+    val comps = edge.split(" ")
+    val src = comps(0).toInt
+    val dst = comps(1).toInt
+    val attr = comps(2).toDouble
+
+    // update weight
+    return gr.mapEdges{ ed =>
+      if (ed.srcId == src && ed.dstId == dst) attr else ed.attr
+    }
+  }
+
+  /**************
+   *    ALTERING 
+   *    spark/graphx/src/main/scala/org/apache/spark/graphx/lib/ShortestPaths.scala
+   *
+   */
+
 
   //private def initMemo() : Memo = Map[Int,(Double,Map[VertexId,Double]())]()
 
@@ -148,18 +149,18 @@ class graphMod extends java.io.Serializable {
 
   /* sendMsg : looks at a triplet, and prepares message for the destination vertex.
    */
-  def sendMessage(edge: EdgeTriplet[Vattr,_]) : Iterator[(VertexId, MsgDigest)] = {
+  def sendMessage(edge: EdgeTriplet[Vattr,Double]) : Iterator[(VertexId, MsgDigest)] = {
     /* If participation status current, then follow that. Else, check if this vertex is 
      * affected *and* expecting a message. In this case, send message. */
     if (isParticipateCurrent(edge.srcAttr)) {
       // check for receiver state optimization.
-      if (edge.srcAttr.participate) return Iterator((edge.dstId,Map(edge.srcId -> (edge.srcAttr.distSoFar + 1.0))))
+      if (edge.srcAttr.participate) return Iterator((edge.dstId,Map(edge.srcId -> (edge.srcAttr.distSoFar + edge.attr))))
       else return Iterator.empty
     }
     else {
       // check if vertex is affected *and* was supposed to send message.
       if (edge.srcAttr.affected && activeCurrentStage(edge.srcAttr)) 
-        return Iterator((edge.dstId,Map(edge.srcId -> (edge.srcAttr.distSoFar + 1.0))))
+        return Iterator((edge.dstId,Map(edge.srcId -> (edge.srcAttr.distSoFar + edge.attr))))
       else return Iterator.empty
     }
   }
@@ -169,8 +170,8 @@ class graphMod extends java.io.Serializable {
   /* Pregel with stage numbers.
    */
 
-  def run(graph: Graph[Int,Double], 
-    maxIterations : Int = 5)
+  def run(graph: Graph[Vattr,Double], 
+    dbg : Boolean = false)
 /*    activeDirection : EdgeDirection = EdgeDirectino.Either)
    (vertexProg : (VertexId, Vattr, MsgDigest) => Vattr,
      sendMsg : EdgeTriplet[Vattr,_] => Iterator[(VertexId,Vattr)],
@@ -197,12 +198,12 @@ class graphMod extends java.io.Serializable {
     var i : Int = 0
 
 
-    while (i < 2) {
+    while (i < 4) {
       var messages = g.mapReduceTriplets(sendMessage, mergeMsgs)
       var activeMessages = messages.count()
 
       //debug
-      messages.saveAsTextFile("/user/debug/init" + i)
+      //messages.saveAsTextFile("/user/debug/init" + i)
 
       // receive messages. At this point, I am receiving messages from stage i.
       var newVerts = g.vertices.innerJoin(messages)(vertexProgram).cache()
@@ -225,7 +226,8 @@ class graphMod extends java.io.Serializable {
       val oldMessages = messages
 
       //debug
-      g.vertices.saveAsTextFile("/user/debug/first"+i)
+      if (dbg) 
+        g.vertices.saveAsTextFile("/user/debug/run"+i)
       // next round of messages
       //messages = g.mapReduceTriplets(sendMessage, mergeMsgs) // check Some(...)
       //activeMessages = messages.count()

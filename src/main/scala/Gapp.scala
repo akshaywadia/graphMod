@@ -27,7 +27,7 @@ object Gapp {
 //      edrdd.saveAsTextFile("/user/debug/outa1")
 
     // Create graph from EdgeRDD
-    val gr = Graph.fromEdges(edrdd, 0)
+    var gr = Graph.fromEdges(edrdd, 0)
 
     /* -- Testing 'updateEdge'. Should really write unit test for this.
      * TODO: Check spark unit test moduel.
@@ -40,6 +40,9 @@ object Gapp {
     //ngr.edges.collect().foreach(println)
     val gmod = new graphMod()
     gmod.run(gr)
+
+    gr = gmod.updateEdge("0 2 1", ggr)
+    gmod.run(gr,dbg=true)
 
   }
 }
