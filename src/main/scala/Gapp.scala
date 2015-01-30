@@ -16,7 +16,7 @@ object Gapp {
      * string "srcId dstId weight".
      * 'file' is set to a MappedRDD object.
      */
-    val file = sc.textFile("/user/z.gr")
+    val file = sc.textFile("/user/tree1024.gr")
 
 
     //  Map 'file' to EdgeRDD, by parsing records appropriately.
@@ -41,8 +41,8 @@ object Gapp {
     val gmod = new graphMod()
     gmod.run(gr)
 
-    gr = gmod.updateEdge("0 2 1", gr)
-    gmod.run(gr,dbg=true)
+    //gr = gmod.updateEdge("0 2 1", gr)
+    //gmod.run(gr)
 
   }
 }

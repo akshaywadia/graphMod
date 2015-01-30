@@ -42,7 +42,7 @@ class graphMod extends java.io.Serializable {
    * @return   :   new graph with updated edge weight.
    */
   
-  def updateEdge(edge:String, gr:Graph[Vattr,Double]) : Graph[Vattr,Double] = {
+  def updateEdge(edge:String, gr:Graph[Int,Double]) : Graph[Int,Double] = {
     // parse edge into edge components
     val comps = edge.split(" ")
     val src = comps(0).toInt
@@ -166,12 +166,16 @@ class graphMod extends java.io.Serializable {
     }
   }
 
+  private def saveDists(gr : Graph[Vattr,Double]) : Unit = {
+    gr.vertices.map{ case (vid,vattr) => (vid,vattr.distSoFar)}.saveAsTextFile("/user/debug/dists")
+  }
+
   //def run()
   
   /* Pregel with stage numbers.
    */
 
-  def run(graph: Graph[Vattr,Double], 
+  def run(graph: Graph[Int,Double], 
     dbg : Boolean = false)
 /*    activeDirection : EdgeDirection = EdgeDirectino.Either)
    (vertexProg : (VertexId, Vattr, MsgDigest) => Vattr,
@@ -199,7 +203,7 @@ class graphMod extends java.io.Serializable {
     var i : Int = 0
 
 
-    while (i < 4) {
+    while (i < 7) {
       var messages = g.mapReduceTriplets(sendMessage, mergeMsgs)
       var activeMessages = messages.count()
 
@@ -250,6 +254,7 @@ class graphMod extends java.io.Serializable {
 
 
     } //while 
+    saveDists(g)
       return g
   }
 
