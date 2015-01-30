@@ -6,7 +6,7 @@ import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
 
 
-class graphMod extends java.io.Serializable {
+class graphMod extends java.io.Serializable (inputGr : Graph[Int,Double] {
 
 
   /* Messge digest. Stores all incoming messages, indexed by VertexId, for a particular stage.
@@ -30,6 +30,18 @@ class graphMod extends java.io.Serializable {
     participate : Boolean,
     distSoFar : Double,
     memo : Memo )
+
+  // process input graph 
+  val initVertexMsg = Vattr(true,0,0,false,Double.MaxValue,Map[Int,MemoInfo]())
+  val initVertexMsgSource = Vattr(true,0,0,true,0.0,Map[Int,MemoInfo]())
+    
+  // serializable issue
+  val setVertexAttr = (vid :VertexId, vdata : Int) => if (vid ==0) initVertexMsgSource else initVertexMsg
+  var gr = graph.mapVertices(setVertexAttr).cache()
+
+
+  def 
+
   /*
    * Updates edges for an existing graph.
    * Params -- 
@@ -42,7 +54,7 @@ class graphMod extends java.io.Serializable {
    * @return   :   new graph with updated edge weight.
    */
   
-  def updateEdge(edge:String, gr:Graph[Vattr,Double]) : Graph[Vattr,Double] = {
+  def updateEdge(edge:String) : Graph[Vattr,Double] = {
     // parse edge into edge components
     val comps = edge.split(" ")
     val src = comps(0).toInt
@@ -50,7 +62,7 @@ class graphMod extends java.io.Serializable {
     val attr = comps(2).toDouble
 
     // update weight
-    return gr.mapEdges{ ed =>
+    gr = gr.mapEdges{ ed =>
       if (ed.srcId == src && ed.dstId == dst) attr else ed.attr
     }
   }
@@ -171,7 +183,7 @@ class graphMod extends java.io.Serializable {
   /* Pregel with stage numbers.
    */
 
-  def run(graph: Graph[Vattr,Double], 
+  def run(
     dbg : Boolean = false)
 /*    activeDirection : EdgeDirection = EdgeDirectino.Either)
    (vertexProg : (VertexId, Vattr, MsgDigest) => Vattr,
@@ -179,12 +191,12 @@ class graphMod extends java.io.Serializable {
      mergeMsg : (MsgDigest, MsgDigest) => MsgDigest) */
   : Graph[Vattr,Double] = {
     // prepare vertices
-    val initVertexMsg = Vattr(true,0,0,false,Double.MaxValue,Map[Int,MemoInfo]())
+    /*val initVertexMsg = Vattr(true,0,0,false,Double.MaxValue,Map[Int,MemoInfo]())
     val initVertexMsgSource = Vattr(true,0,0,true,0.0,Map[Int,MemoInfo]())
     
     // serializable issue
     val setVertexAttr = (vid :VertexId, vdata : Int) => if (vid ==0) initVertexMsgSource else initVertexMsg
-    var g = graph.mapVertices(setVertexAttr).cache()
+    var g = graph.mapVertices(setVertexAttr).cache() */
 //    var g = graph.mapVertices((vid, vdata) => if (vid == 0) initVertexMsgSource
 //      else initVertexMsg).cache()
 
@@ -200,19 +212,19 @@ class graphMod extends java.io.Serializable {
 
 
     while (i < 4) {
-      var messages = g.mapReduceTriplets(sendMessage, mergeMsgs)
+      var messages = gr.mapReduceTriplets(sendMessage, mergeMsgs)
       var activeMessages = messages.count()
 
       //debug
       //messages.saveAsTextFile("/user/debug/init" + i)
 
       // receive messages. At this point, I am receiving messages from stage i.
-      var newVerts = g.vertices.innerJoin(messages)(vertexProgram).cache()
+      var newVerts = gr.vertices.innerJoin(messages)(vertexProgram).cache()
 
       // update graph with new vertices
-      prevG  = g
+      prevG  = gr
       // after this point, the vertex is in stage 1.
-      g = g.outerJoinVertices(newVerts) { (vid, oldAttr, newAttr) =>
+      gr = gr.outerJoinVertices(newVerts) { (vid, oldAttr, newAttr) =>
         val attr = newAttr.getOrElse(oldAttr)
         Vattr(attr.affected,
           attr.globalStage + 1, 
@@ -222,13 +234,13 @@ class graphMod extends java.io.Serializable {
           attr.memo
           )
       }
-      g.cache()
+      gr.cache()
 
       val oldMessages = messages
 
       //debug
       if (dbg) 
-        g.vertices.saveAsTextFile("/user/debug/run"+i)
+        gr.vertices.saveAsTextFile("/user/debug/run"+i)
       // next round of messages
       //messages = g.mapReduceTriplets(sendMessage, mergeMsgs) // check Some(...)
       //activeMessages = messages.count()
@@ -250,7 +262,7 @@ class graphMod extends java.io.Serializable {
 
 
     } //while 
-      return g
+      return gr
   }
 
 

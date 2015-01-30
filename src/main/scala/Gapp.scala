@@ -38,11 +38,11 @@ object Gapp {
     val ngr = gmod.updateEdge(newEd, gr) */
     //debug
     //ngr.edges.collect().foreach(println)
-    val gmod = new graphMod()
-    gmod.run(gr)
+    val gmod = new graphMod(gr)
+    gmod.run()
 
-    gr = gmod.updateEdge("0 2 1", gr)
-    gmod.run(gr,dbg=true)
+    gr = gmod.updateEdge("0 2 1")
+    gmod.run(dbg=true)
 
   }
 }
