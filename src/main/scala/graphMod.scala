@@ -120,7 +120,7 @@ class graphMod extends java.io.Serializable {
    * 5. memoize current state */
   def vertexProgram(id : VertexId, attr : Vattr, messages : MsgDigest) : Vattr = {
     val newParticipate = participate(attr,messages)
-    val newVertexStage = attr.globalStage
+    val newVertexStage = (attr.globalStage+1)
     val memoizedMsgDigest  = if (attr.memo contains attr.globalStage) attr.memo(attr.globalStage).memoMessages else Map[Long,Double]()
     
     val mergedMessages = mergeMsgs(memoizedMsgDigest,messages) // returns map with updated messages
@@ -170,7 +170,7 @@ class graphMod extends java.io.Serializable {
    */
 
   def run(graph: Graph[Int,Double], 
-    maxIterations : Int = 10)
+    maxIterations : Int = 5)
 /*    activeDirection : EdgeDirection = EdgeDirectino.Either)
    (vertexProg : (VertexId, Vattr, MsgDigest) => Vattr,
      sendMsg : EdgeTriplet[Vattr,_] => Iterator[(VertexId,Vattr)],
@@ -187,24 +187,35 @@ class graphMod extends java.io.Serializable {
 //      else initVertexMsg).cache()
 
     // compute Stage 0 messages.
-    var messages = g.mapReduceTriplets(sendMessage, mergeMsgs)
-    var activeMessages = messages.count()
+    //var messages = g.mapReduceTriplets(sendMessage, mergeMsgs)
+    //var activeMessages = messages.count()
+
+
 
     // main loop, decide when to stop -- when no new messages.
     var prevG : Graph[Vattr,Double] = null
-    var i = 0
-    //while (i < maxIterations) {
-      // receive messages
+    var i : Int = 0
+
+
+    while (i < 2) {
+      var messages = g.mapReduceTriplets(sendMessage, mergeMsgs)
+      var activeMessages = messages.count()
+
+      //debug
+      messages.saveAsTextFile("/user/debug/init" + i)
+
+      // receive messages. At this point, I am receiving messages from stage i.
       var newVerts = g.vertices.innerJoin(messages)(vertexProgram).cache()
 
       // update graph with new vertices
       prevG  = g
+      // after this point, the vertex is in stage 1.
       g = g.outerJoinVertices(newVerts) { (vid, oldAttr, newAttr) =>
         val attr = newAttr.getOrElse(oldAttr)
         Vattr(attr.affected,
           attr.globalStage + 1, 
           attr.vertexStage,
-          false,
+          attr.participate,
           attr.distSoFar,
           attr.memo
           )
@@ -213,27 +224,30 @@ class graphMod extends java.io.Serializable {
 
       val oldMessages = messages
 
-      // next round of messages
-      messages = g.mapReduceTriplets(sendMessage, mergeMsgs) // check Some(...)
-      activeMessages = messages.count()
-
       //debug
-      g.vertices.collect().mkString("\n")
+      g.vertices.saveAsTextFile("/user/debug/first"+i)
+      // next round of messages
+      //messages = g.mapReduceTriplets(sendMessage, mergeMsgs) // check Some(...)
+      //activeMessages = messages.count()
+
+      // debug
+      //debug
+      //messages.saveAsTextFile(outFile)
+
+
       // Unpersist the RDDs hidden by newly-materialized RDDs
       oldMessages.unpersist(blocking=false)
       newVerts.unpersist(blocking=false)
       prevG.unpersistVertices(blocking=false)
       prevG.edges.unpersist(blocking=false)
       // count the iteration
-      
+     
+
       i += 1
 
+
+    } //while 
       return g
-
-
-
-    
-    //} //while 
   }
 
 

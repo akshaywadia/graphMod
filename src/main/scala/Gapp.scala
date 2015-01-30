@@ -24,6 +24,8 @@ object Gapp {
       val comps = ed.split(" ")
       new Edge(comps(0).toInt, comps(1).toInt, comps(2).toDouble) }
 
+//      edrdd.saveAsTextFile("/user/debug/outa1")
+
     // Create graph from EdgeRDD
     val gr = Graph.fromEdges(edrdd, 0)
 
