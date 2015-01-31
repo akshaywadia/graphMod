@@ -75,7 +75,6 @@ class graphMod extends java.io.Serializable {
    * be as in graphx docs. */
   private def addMaps(dist1 : Double, dist2 : Double) : Double = math.min(dist1,dist2)
 
-  /* This comment intentionally left blank. */
   
   /* Functions used for Pregel interface. */
 
@@ -254,9 +253,11 @@ class graphMod extends java.io.Serializable {
 
 
     } //while 
-    saveDists(g)
+    //saveDists(g)
       return g
   }
+
+  def getDists(gr : Graph[Vattr,Double]) : Unit = gr.vertices.map{ case (vid,vattr) => (vid,vattr.distSoFar)}.collect().mkString("\n")
 
 
   /* TO IMPROVE
