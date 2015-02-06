@@ -9,8 +9,11 @@ import org.apache.spark.rdd.RDD
 class graphMod extends java.io.Serializable {
 
 
-  /* Messge digest. Stores all incoming messages, indexed by VertexId, for a particular stage.
-   */
+  /****
+   * TYPE DECLARATIONS for storing state information for each vertex.
+   ****/
+
+  /* Messge digest. Stores all incoming messages, indexed by VertexId, for a particular stage.*/
   type MsgDigest = Map[VertexId,Double]
 
   /* The memoization mechanism. Maps stage number to message digest received in that 
@@ -18,11 +21,14 @@ class graphMod extends java.io.Serializable {
   case class MemoInfo(memoDist : Double, memoMessages : MsgDigest)
   type Memo = Map[Int,MemoInfo]
 
-
-  /* Vertex attribute type -- a Tuple4, where the first component is a flag 
-   * indicating whether vertex should participate or not, the second component 
-   * is the stage number, the third is the shortest path length so far, and 
-   * the fourth component is the Memo. */
+  /* Vertex attribute type -- 
+   *      affected    :   whether graph update affects this vertex or not
+   *      globalStage :   global stage number
+   *      vertexStage :   the last stage vertex was active in
+   *      participate :   will this vertex send message in this stage (used to signal 
+   *                      map-reduce job)
+   *      distSoFar   :   distance so far
+   */
   case class Vattr(
     affected : Boolean,
     globalStage : Int,
@@ -30,18 +36,18 @@ class graphMod extends java.io.Serializable {
     participate : Boolean,
     distSoFar : Double,
     memo : Memo )
-  /*
-   * Updates edges for an existing graph.
-   * Params -- 
-   * 
-   * edge      :   String, with format "srcID dstId weight", which are Long,
-   * Long, and Double
-   *
-   * gr        :   Graphp[Int,Double]
-   *
-   * @return   :   new graph with updated edge weight.
-   */
+
+
+  /****
+   * GRAPH UPDATE FUNCTIONS
+   ****/
   
+  /* Updates edges for an existing graph.
+   *      edge      :   String, with format "srcID dstId weight", which are Long,
+   *                    Long, and Double
+   *      gr        :   Graph[Int,Double]
+   *      *return*  :   new graph with updated edge weight.
+   */
   def updateEdge(edge:String, gr:Graph[Int,Double]) : Graph[Int,Double] = {
     // parse edge into edge components
     val comps = edge.split(" ")
@@ -55,80 +61,132 @@ class graphMod extends java.io.Serializable {
     }
   }
 
-  /**************
-   *    ALTERING 
-   *    spark/graphx/src/main/scala/org/apache/spark/graphx/lib/ShortestPaths.scala
+  /****
+   * INCREMENTAL SHORTEST DISTANCE
+   * Algorithm taken from:
+   *         Zhuhua Cai, Dionysios Logothetis, and Georgos Siganos. 
+   *         "Facilitating real-time graph mining." 
+   *         Proceedings of the fourth international workshop on Cloud data management. 
+   *         ACM, 2012.
    *
+   * Code built upon existing (static) shortest path implementation in GraphX:
+   * 
+   * https://github.com/apache/spark/blob/4a171225ba628192a5ae43a99dc50508cf12491c/graphx/src/main/scala/org/apache/spark/graphx/lib/ShortestPaths.scala
+   *
+   * @TODO find a better way to reference above file.
+   *   
+   ****/
+
+
+  /* Increment map. Only for experimentation.
+   * Note that in my case, messages received are scalars. 
+   * For LANDMARKS, should be generalized to maps.
    */
-
-
-  //private def initMemo() : Memo = Map[Int,(Double,Map[VertexId,Double]())]()
-
-  /* Increment map. Not clear if I will need it. 
-   * Note that in my case, SPMap is just a single value, the first component
-   * of Vattr. For landmarks, should be generalized to maps.*/
   private def incrementMap(dist : Double) : Double = dist + 1
 
   /* This is the 'reduce' function. A vertex receives messages from all 
    * neighbours, and the reduce function reduces all incoming messages to 
    * one message. Here, it is simply the min function. For landmarks, it will
-   * be as in graphx docs. */
+   * be as in graphx docs. 
+   */
   private def addMaps(dist1 : Double, dist2 : Double) : Double = math.min(dist1,dist2)
 
   
   /* Functions used for Pregel interface. */
 
-  /*
+  /* This is the reduce function in the map-reduce over triplets. Simply concatenates all the 
+   * messages directed towards a particular vertex. Note that we need to store all (vid,msg) 
+   * pairs as they need to be memoized -- cf. vertexProgram.
+   *
    * Reminder: Don't need to send memoized state, that is only local to 
    * each vertex.
    */
-
   private def mergeMsgs(memoMsg : MsgDigest, newMsg : MsgDigest) : MsgDigest = 
     memoMsg ++ newMsg
 
-  /* Takes as input attr, which contains previously memoized messages, merges that with
-   * new messages received, appends current state, and computes min. */
+
+
+  /* Computes the current state (which is the current shortest distance). 
+   * In NORMAL (non-incremental, first pass) operation, recieves all messages,
+   * and simply computes the min.
+   * In INCREMENTAL operation, receives all messages, merges them with previously
+   * memoized messages, which are also part of the computation, and then computes the min.
+   *      attr      :     Current vertex attr. Needed to recall previous messages.
+   *      messages  :     New messages received in this stage, which is Map[vid,double]
+   *      *return*  :     New shortest distance.
+   */
   private def computeState(attr : Vattr, messages : MsgDigest) : Double = {
-    val msgDigest = if (attr.memo contains attr.globalStage) attr.memo(attr.globalStage).memoMessages else Map[Long,Double]()
-    val mergedMessages = mergeMsgs(msgDigest, messages)
+    // get memoized messages for this stage, if they exist
+    val memoMsgs = if (attr.memo contains attr.globalStage) 
+                        attr.memo(attr.globalStage).memoMessages 
+                    else Map[Long,Double]()
+
+    val mergedMessages = mergeMsgs(memoMsgs, messages)
+
+    // compute min
     return (attr.distSoFar :: mergedMessages.values.toList).reduce((a,b) => math.min(a,b))
   }
 
-  /* Demo participate function. */
+
+
+  /* Compute whether current vertex participates in this stage or not. For complete description
+   * of this function, see Section 3.2 of the above paper. Note that, it is possible for a 
+   * vertex to participate, even if it did not receive any messages in this stage. This happens
+   * in incremental operation for affected vertex. This case is handled in the sendMsgs
+   * function.
+   */
   private def participate(attr : Vattr, messages : MsgDigest) : Boolean = {
     val memo = attr.memo
+
+    // If vertex receives message in this stage, but there is no memoized record, participate.
     if (!(memo contains attr.globalStage)) return true
-    // return true if no previously memoized messages
     else {
       val memoInfo = memo(attr.globalStage)
       val memoDist = memoInfo.memoDist
       val memoMsgs = memoInfo.memoMessages
       val currentDist = computeState(attr, messages)
+
+      // At least one different message was received.
       if (memoMsgs != messages) return true
+
+      // Current state is different. 
       if (currentDist != memoDist) return true
+
+      // Current vertex is affected.
       if (attr.affected) return true
       else return false
       
     }
   }
 
-  /* vertexProgram. This is run on every vertex. Recall that this is executed
-   * *after* the innerJoin in Pregel. The result of this join is (vid, Vattr, msgDigest).
+  /* vertexProgram. This is run for only the vertices that receive messages. 
+   * Recall that this is executed *after* the innerJoin in Pregel. 
+   * The result of this join is (vid, Vattr, msgDigest).
    * 1. set participation bit
    * 2. update vertex stage
    * 3. merge messages with memoized messages
    * 4. update current shortest distance
    * 5. memoize current state */
   def vertexProgram(id : VertexId, attr : Vattr, messages : MsgDigest) : Vattr = {
+    // determine participation, for sendMsgs function
     val newParticipate = participate(attr,messages)
+
+    // update vertex stage, again for the benefit of sendMsgs function
     val newVertexStage = (attr.globalStage+1)
+
+    // get previously stored messages for this stage, and merge with current messages
     val memoizedMsgDigest  = if (attr.memo contains attr.globalStage) attr.memo(attr.globalStage).memoMessages else Map[Long,Double]()
-    
     val mergedMessages = mergeMsgs(memoizedMsgDigest,messages) // returns map with updated messages
+
+    // update current state, that is, shortest distance
     val newDist = computeState(attr, messages)
+
+    // update memo for current stage
     val newMemo = attr.memo + (attr.globalStage -> MemoInfo(
       newDist,
       mergedMessages))
+
+    // prepare and return new vertex attribute object with updated state
     return Vattr(
       attr.affected, 
       attr.globalStage, 
@@ -138,16 +196,22 @@ class graphMod extends java.io.Serializable {
       newMemo ) 
     }
 
+
+  /* HELPER FUNCTIONS for sendMsgs */
+  
+  /* Check if participation status is current or not. This simply involves testing if
+   * vertexStage matches globalStage or not. No match means that the vertex was NOT active
+   * during this stage (vertexProgram was not executed in this stage)
+   */
   private def isParticipateCurrent(attr : Vattr) : Boolean = attr.globalStage == attr.vertexStage
 
-  private def activeCurrentStage(attr : Vattr) : Boolean = {
-    // Check if vertex was active in the current stage, in the true execution. Check
-    // if the memoized version is empty or not.
-    return attr.memo contains attr.globalStage
-  }
+  /* Check is this vertex was active in the current stage, in normal operation. This involves
+   * if there is any memo for this stage.
+   */
+  private def activeCurrentStage(attr : Vattr) : Boolean = attr.memo contains attr.globalStage
 
 
-  /* sendMsg : looks at a triplet, and prepares message for the destination vertex.
+  /* Looks at each edge, and prepares message from src to dst.
    */
   def sendMessage(edge: EdgeTriplet[Vattr,Double]) : Iterator[(VertexId, MsgDigest)] = {
     /* If participation status current, then follow that. Else, check if this vertex is 
@@ -165,6 +229,7 @@ class graphMod extends java.io.Serializable {
     }
   }
 
+  /* Debug function */
   private def saveDists(gr : Graph[Vattr,Double]) : Unit = {
     gr.vertices.map{ case (vid,vattr) => (vid,vattr.distSoFar)}.saveAsTextFile("/user/debug/dists")
   }
@@ -260,7 +325,7 @@ class graphMod extends java.io.Serializable {
   def getDists(gr : Graph[Vattr,Double]) : Unit = gr.vertices.map{ case (vid,vattr) => (vid,vattr.distSoFar)}.collect().mkString("\n")
 
 
-  /* TO IMPROVE
+  /* TO IMPROVE, REFERENCE FOR LATER.
    * val spGraph = graph.mapVertices { (vid, attr) =>
    *       if (landmarks.contains(vid)) makeMap(vid -> 0) else makeMap()
    *           }
