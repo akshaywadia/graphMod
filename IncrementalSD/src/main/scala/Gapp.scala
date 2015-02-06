@@ -16,7 +16,7 @@ object Gapp {
      * string "srcId dstId weight".
      * 'file' is set to a MappedRDD object.
      */
-    val file = sc.textFile("/user/tree1024.gr")
+    val file = sc.textFile("/user/akshay/tree1024.gr")
 
 
     //  Map 'file' to EdgeRDD, by parsing records appropriately.
@@ -39,7 +39,7 @@ object Gapp {
     //debug
     //ngr.edges.collect().foreach(println)
     val gmod = new graphMod()
-    gmod.run(gr)
+    gmod.run(gr).vertices.map{ case (vid,vattr) => (vid,vattr.distSoFar)}.saveAsTextFile("/user/akshay/mod_result")
 
     //gr = gmod.updateEdge("0 2 1", gr)
     //gmod.run(gr)
