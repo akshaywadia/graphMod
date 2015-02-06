@@ -18,7 +18,7 @@ object Test {
     val conf = new SparkConf().setMaster("local[4]").setAppName("Test")
     val sc = new SparkContext(conf)
 
-    val file = sc.textFile("/user/z.gr")
+    val file = sc.textFile("/user/akshay/z1.gr")
     val edrdd = file.map{ ed =>
       val comps = ed.split(" ")
       new Edge(comps(0).toInt, comps(1).toInt, comps(2).toDouble) }
@@ -31,7 +31,7 @@ object Test {
       val initialrun = gmod.run(modifiedGraph)
 
       val rgraph = gmod.resetGraph(initialrun)
-      val egraph = gmod.updateEdge("1 3 1.0", rgraph)
+      val egraph = gmod.updateEdge("0 2 1.0", rgraph)
 //      egraph.edges.saveAsTextFile("/user/akshay/delta/e")
  //     egraph.vertices.saveAsTextFile("/user/akshay/delta/v")
 
