@@ -4,10 +4,16 @@ import org.apache.spark.SparkConf
 import org.apache.spark._
 import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
+import org.apache.log4j.Logger 
+import org.apache.log4j.Level 
+
 
 
 object Test {
   def main(args : Array[String]) {
+    // logging off
+    Logger.getLogger("org").setLevel(Level.OFF) 
+    Logger.getLogger("akka").setLevel(Level.OFF) 
     // Create SparkContext -- boilerplate
     val conf = new SparkConf().setMaster("local[4]").setAppName("Test")
     val sc = new SparkContext(conf)
@@ -24,19 +30,29 @@ object Test {
 
       val initialrun = gmod.run(modifiedGraph)
 
+      val rgraph = gmod.resetGraph(initialrun)
+      val egraph = gmod.updateEdge("1 3 1.0", rgraph)
+//      egraph.edges.saveAsTextFile("/user/akshay/delta/e")
+ //     egraph.vertices.saveAsTextFile("/user/akshay/delta/v")
+
+      val postgraph = gmod.run(egraph,true)
+      postgraph.vertices.saveAsTextFile("/user/akshay/delta/v")
+      val count = postgraph.vertices.map{ case (vid,vattr) => vattr.disturbed}.reduce((a,b) => a+b)
+      println("Post count: " + count) 
+
 //      initialrun.vertices.saveAsTextFile("/user/akshay/delta/final")
  //     val count = initialrun.vertices.map{ case (vid,vattr) => vattr.disturbed}.reduce((a,b) => a+b)
   //    println("Pre update: " + count.toString)
-      val modGr2 = gmod.updateEdge("1 3 1.0", initialrun)
-      modGr2.vertices.saveAsTextFile("/user/akshay/delta/verEd")
-      modGr2.edges.saveAsTextFile("/user/akshay/delta/edEd")
+  //    val modGr2 = gmod.updateEdge("1 3 1.0", initialrun)
+//      modGr2.vertices.saveAsTextFile("/user/akshay/delta/verEd")
+//      modGr2.edges.saveAsTextFile("/user/akshay/delta/edEd")
 
 
       // -- for debug only --
       // reset vertex disturbances
-     val modgr3 = gmod.resetGraph(modGr2)
-     modgr3.vertices.saveAsTextFile("/user/akshay/delta/postver")
-     modgr3.edges.saveAsTextFile("/user/akshay/delta/posted")
+   //  val modgr3 = gmod.resetGraph(modGr2)
+ //    modgr3.vertices.saveAsTextFile("/user/akshay/delta/postver")
+ //    modgr3.edges.saveAsTextFile("/user/akshay/delta/posted")
 
 /*      val finalgr = gmod.run(modgr3,true)
       

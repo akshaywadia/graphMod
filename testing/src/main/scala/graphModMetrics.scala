@@ -46,14 +46,31 @@ class graphMod extends java.io.Serializable {
   def updateEdge(edge:String, gr:Graph[Vattr,Double]) : Graph[Vattr,Double] = {
     // parse edge into edge components
     val comps = edge.split(" ")
-    val src = comps(0).toInt
-    val dst = comps(1).toInt
+    val src = comps(0).toLong
+    val dst = comps(1).toLong
     val attr = comps(2).toDouble
 
     // update weight
-    return gr.mapEdges{ ed =>
+    val updatedEd = gr.mapEdges{ ed =>
       if (ed.srcId == src && ed.dstId == dst) attr else ed.attr
     }
+    // update affectedness
+
+    if (src == 0) // root
+      return updatedEd.mapVertices{ case (vid,vattr) => if (vid == src) Vattr(vattr.disturbed, true,
+        vattr.globalStage,
+        vattr.vertexStage,
+        true,
+        vattr.distSoFar,
+      vattr.memo) else vattr }
+      else 
+        return updatedEd.mapVertices{ case (vid,vattr) => if (vid == src) Vattr(vattr.disturbed, true,
+          vattr.globalStage,
+          vattr.vertexStage,
+          vattr.participate,
+          vattr.distSoFar,
+        vattr.memo) else vattr }
+
   }
 
   /**************
@@ -76,10 +93,10 @@ class graphMod extends java.io.Serializable {
    * be as in graphx docs. */
   private def addMaps(dist1 : Double, dist2 : Double) : Double = math.min(dist1,dist2)
 
-  
+
   /* Functions used for Pregel interface. */
 
-  /*
+ /*
    * Reminder: Don't need to send memoized state, that is only local to 
    * each vertex.
    */
@@ -122,8 +139,11 @@ class graphMod extends java.io.Serializable {
    * 4. update current shortest distance
    * 5. memoize current state */
   def vertexProgram(id : VertexId, attr : Vattr, messages : MsgDigest) : Vattr = {
-    val newParticipate = participate(attr,messages)
+
+    val newParticipate = participate(attr,messages) 
     val newDisturbed = if (newParticipate) 1 else attr.disturbed
+    
+    //this is getting ready to participate in the *next* stage.
     val newVertexStage = (attr.globalStage+1)
     val memoizedMsgDigest  = if (attr.memo contains attr.globalStage) attr.memo(attr.globalStage).memoMessages else Map[Long,Double]()
     
@@ -147,25 +167,34 @@ class graphMod extends java.io.Serializable {
   private def activeCurrentStage(attr : Vattr) : Boolean = {
     // Check if vertex was active in the current stage, in the true execution. Check
     // if the memoized version is empty or not.
-    return attr.memo contains attr.globalStage
+    return attr.memo contains attr.globalStage-1
   }
 
 
   /* sendMsg : looks at a triplet, and prepares message for the destination vertex.
    */
   def sendMessage(edge: EdgeTriplet[Vattr,Double]) : Iterator[(VertexId, MsgDigest)] = {
-    /* If participation status current, then follow that. Else, check if this vertex is 
-     * affected *and* expecting a message. In this case, send message. */
-    if (isParticipateCurrent(edge.srcAttr)) {
-      // check for receiver state optimization.
-      if (edge.srcAttr.participate) return Iterator((edge.dstId,Map(edge.srcId -> (edge.srcAttr.distSoFar + edge.attr))))
-      else return Iterator.empty
+
+    val gstage = edge.srcAttr.globalStage
+
+    // handle initial stage first, where only root is active
+    if (gstage == 0) {
+        if (edge.srcAttr.participate) 
+          return Iterator((edge.dstId,Map(edge.srcId -> (edge.srcAttr.distSoFar + edge.attr))))
+        else return Iterator.empty
     }
     else {
-      // check if vertex is affected *and* was supposed to send message.
-      if (edge.srcAttr.affected && activeCurrentStage(edge.srcAttr)) 
-        return Iterator((edge.dstId,Map(edge.srcId -> (edge.srcAttr.distSoFar + edge.attr))))
-      else return Iterator.empty
+      // If participation status current, then follow that. 
+      if (isParticipateCurrent(edge.srcAttr)) {
+        if (edge.srcAttr.participate) return Iterator((edge.dstId,Map(edge.srcId -> (edge.srcAttr.distSoFar + edge.attr))))
+        else return Iterator.empty
+      }
+      else {
+        // check if vertex is affected *and* was supposed to send message.
+        if (edge.srcAttr.affected && activeCurrentStage(edge.srcAttr)) 
+          return Iterator((edge.dstId,Map(edge.srcId -> (edge.srcAttr.distSoFar + edge.attr))))
+        else return Iterator.empty
+      }
     }
   }
 
@@ -174,8 +203,8 @@ class graphMod extends java.io.Serializable {
   }
 
   def initVattr(gr : Graph[Int,Double]) : Graph[Vattr,Double] = {
-    val initVertexMsg = Vattr(0,true,0,0,false,Double.MaxValue,Map[Int,MemoInfo]())
-    val initVertexMsgSource = Vattr(0,true,0,0,true,0.0,Map[Int,MemoInfo]())
+    val initVertexMsg = Vattr(0,false,0,0,false,Double.MaxValue,Map[Int,MemoInfo]())
+    val initVertexMsgSource = Vattr(0,false,0,0,true,0.0,Map[Int,MemoInfo]())
     // serializable issue
     val setVertexAttr = (vid :VertexId, vdata : Int) => if (vid ==0) initVertexMsgSource else initVertexMsg
     return gr.mapVertices(setVertexAttr)
@@ -188,17 +217,17 @@ class graphMod extends java.io.Serializable {
       0,      // vertexStage : Int,
       false,  //participate : Boolean,
       vattr.distSoFar,  // distSoFar : Double,
-      vattr.memo ) }       // : Memo )
+    vattr.memo ) }       // : Memo )
   }
 
   //def run()
-  
-  /* Pregel with stage numbers.
-   */
 
-  def run(graph: Graph[Vattr,Double], 
-    dbg : Boolean = false)
-/*    activeDirection : EdgeDirection = EdgeDirectino.Either)
+  /* Pregel with stage numbers.
+  */
+
+ def run(graph: Graph[Vattr,Double], 
+   dbg : Boolean = false)
+ /*    activeDirection : EdgeDirection = EdgeDirectino.Either)
    (vertexProg : (VertexId, Vattr, MsgDigest) => Vattr,
      sendMsg : EdgeTriplet[Vattr,_] => Iterator[(VertexId,Vattr)],
      mergeMsg : (MsgDigest, MsgDigest) => MsgDigest) */
