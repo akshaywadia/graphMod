@@ -24,16 +24,21 @@ object Test {
 
       val initialrun = gmod.run(modifiedGraph)
 
-      initialrun.vertices.saveAsTextFile("/user/akshay/delta/final")
-      val count = initialrun.vertices.map{ case (vid,vattr) => vattr.disturbed}.reduce((a,b) => a+b)
-      println("Pre update: " + count.toString)
-/*      val modGr2 = gmod.updateEdge("1 3 1.0", modifiedGraph)
+//      initialrun.vertices.saveAsTextFile("/user/akshay/delta/final")
+ //     val count = initialrun.vertices.map{ case (vid,vattr) => vattr.disturbed}.reduce((a,b) => a+b)
+  //    println("Pre update: " + count.toString)
+      val modGr2 = gmod.updateEdge("1 3 1.0", initialrun)
+      modGr2.vertices.saveAsTextFile("/user/akshay/delta/verEd")
+      modGr2.edges.saveAsTextFile("/user/akshay/delta/edEd")
+
 
       // -- for debug only --
       // reset vertex disturbances
-      val modgr3 = gmod.resetGraph(modGr2)
+     val modgr3 = gmod.resetGraph(modGr2)
+     modgr3.vertices.saveAsTextFile("/user/akshay/delta/postver")
+     modgr3.edges.saveAsTextFile("/user/akshay/delta/posted")
 
-      val finalgr = gmod.run(modgr3,true)
+/*      val finalgr = gmod.run(modgr3,true)
       
       finalgr.vertices.saveAsTextFile("/user/akshay/delta/final")
         val count2 = finalgr.vertices.map{ case (vid,vattr) => vattr.disturbed}.reduce((a,b) => a+b)
