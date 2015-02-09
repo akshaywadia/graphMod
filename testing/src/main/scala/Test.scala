@@ -18,13 +18,37 @@ object Test {
     val conf = new SparkConf().setMaster("local[4]").setAppName("Test")
     val sc = new SparkContext(conf)
 
-    val file = sc.textFile("/user/akshay/z1.gr")
+    //val file = sc.textFile("/user/akshay/z1.gr")
+    val file = sc.textFile("/user/akshay/tree1024.gr")
     val edrdd = file.map{ ed =>
       val comps = ed.split(" ")
       new Edge(comps(0).toInt, comps(1).toInt, comps(2).toDouble) }
       var gr = Graph.fromEdges(edrdd, 0)
 
       val gmod = new graphMod()
+      var postrun = gmod.run(gmod.initVattr(gr))
+      println("First run...")
+      //val edRdd = sc.textFile("/user/ed.txt")
+      //var g = gmod.updateEdgeBatch(edRdd, postrun)
+
+
+      //g.edges.saveAsTextFile("/user/akshay/delta/batch")
+      println("Starting reset")
+      val modgr = gmod.resetGraph(postrun)
+      //var count = modgr.vertices.map{ case (vid,vattr) => vattr.disturbed}.reduce((a,b) => a+b)
+      //println("first run count: " + count.toString)
+      var gup = gmod.updateEdge("143 286 500.0", modgr)
+      println("Staring second run...")
+      var postup = gmod.run(gup, true)
+      println("Second run over...")
+      var deltav = postup.vertices.filter{ case (vid,vattr) => vattr.disturbed != 0}
+      println("Post count: " + deltav.count())  
+      postup.vertices.saveAsTextFile("/user/akshay/delta/v")
+      postup.edges.saveAsTextFile("/user/akshay/delta/e")
+      deltav.saveAsTextFile("/user/akshay/delta/dv")
+
+/////////// working debug /////////////////
+/*      val gmod = new graphMod()
 
       val modifiedGraph = gmod.initVattr(gr)
 
@@ -38,7 +62,12 @@ object Test {
       val postgraph = gmod.run(egraph,true)
       postgraph.vertices.saveAsTextFile("/user/akshay/delta/v")
       val count = postgraph.vertices.map{ case (vid,vattr) => vattr.disturbed}.reduce((a,b) => a+b)
-      println("Post count: " + count) 
+      println("Post count: " + count)  */
+/////////// working debug /////////////////
+
+
+
+
 
 //      initialrun.vertices.saveAsTextFile("/user/akshay/delta/final")
  //     val count = initialrun.vertices.map{ case (vid,vattr) => vattr.disturbed}.reduce((a,b) => a+b)

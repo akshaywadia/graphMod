@@ -73,6 +73,14 @@ class graphMod extends java.io.Serializable {
 
   }
 
+  def updateEdgeBatch(edges:RDD[String], gr:Graph[Vattr,Double]) : Graph[Vattr,Double] = {
+    var g = gr
+    val edArray = edges.collect()
+    for (line <- edArray)
+      g = updateEdge(line,g)
+    return g
+  }
+
   /**************
    *    ALTERING 
    *    spark/graphx/src/main/scala/org/apache/spark/graphx/lib/ShortestPaths.scala
@@ -109,7 +117,7 @@ class graphMod extends java.io.Serializable {
   private def computeState(attr : Vattr, messages : MsgDigest) : Double = {
     val msgDigest = if (attr.memo contains attr.globalStage) attr.memo(attr.globalStage).memoMessages else Map[Long,Double]()
     val mergedMessages = mergeMsgs(msgDigest, messages)
-    return (attr.distSoFar :: mergedMessages.values.toList).reduce((a,b) => math.min(a,b))
+    return (mergedMessages.values.toList).reduce((a,b) => math.min(a,b))
   }
 
   /* Demo participate function. */
@@ -250,12 +258,14 @@ class graphMod extends java.io.Serializable {
     var i : Int = 0
 
 
-    while (i < 5) {
+    while (i < 10) {
       var messages = g.mapReduceTriplets(sendMessage, mergeMsgs)
       var activeMessages = messages.count()
       if (dbg) {
-        var fileName = "/user/akshay/delta/d" + i.toString
-        messages.saveAsTextFile(fileName)
+        //var fileName = "/user/akshay/delta/d" + i.toString
+        //messages.saveAsTextFile(fileName)
+        println("Stage: " + i.toString)
+        println(messages.collect().mkString("\n"))
       }
 
       //debug
