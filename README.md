@@ -8,7 +8,9 @@ An important feature of real-world large scale networks is that they are *dynami
 
 A better solution is to compute shortest distance *incrementally*. Intuitively, depending on the structure of the graph, there can be many updates that only affect a small portion of the graph. If we can identify the sub-graph which is affected by an update, then we can potentially save significant computation.
 
-This intuition is formalized in the paper [Facilitating Real-Time Graph Mining] by Cai, Logothetis, and Siganos (Cloud Data Management, 2012). The authors give an incremental algorithm for general message-passing graph-parallel frameworks.
+This intuition is formalized in the paper [Facilitating Real-Time Graph Mining](
+http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.296.654&rep=rep1&type=pdf) by Cai, Logothetis, and Siganos (Cloud Data Management, 2012). The authors give an incremental algorithm for general message-passing graph-parallel frameworks.
+
 
 The goal of this project is to implement the above algorithm for Spark.
 
