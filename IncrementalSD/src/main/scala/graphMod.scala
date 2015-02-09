@@ -240,7 +240,8 @@ class graphMod extends java.io.Serializable {
    */
 
   def run(graph: Graph[Int,Double], 
-    dbg : Boolean = false)
+    dbg : Boolean = false,
+    MaxIterations : Int = 10))
 /*    activeDirection : EdgeDirection = EdgeDirectino.Either)
    (vertexProg : (VertexId, Vattr, MsgDigest) => Vattr,
      sendMsg : EdgeTriplet[Vattr,_] => Iterator[(VertexId,Vattr)],
@@ -261,13 +262,12 @@ class graphMod extends java.io.Serializable {
     //var activeMessages = messages.count()
 
 
-
     // main loop, decide when to stop -- when no new messages.
     var prevG : Graph[Vattr,Double] = null
     var i : Int = 0
 
 
-    while (i < 7) {
+    while (i < MaxIterations) {
       var messages = g.mapReduceTriplets(sendMessage, mergeMsgs)
       var activeMessages = messages.count()
 
@@ -323,43 +323,4 @@ class graphMod extends java.io.Serializable {
   }
 
   def getDists(gr : Graph[Vattr,Double]) : Unit = gr.vertices.map{ case (vid,vattr) => (vid,vattr.distSoFar)}.collect().mkString("\n")
-
-
-  /* TO IMPROVE, REFERENCE FOR LATER.
-   * val spGraph = graph.mapVertices { (vid, attr) =>
-   *       if (landmarks.contains(vid)) makeMap(vid -> 0) else makeMap()
-   *           }
-   */
-
-  /*def constructGraph(edgeFile : String) : Graph =  {
-    val conf = new SparkConf().setAppName("graphMod")
-    val sc = new SparkContext(conf)
-    val gr = GraphLoader.edgeListFile(sc,edgeFile)
-    return gr
-  } */
 }
-
-/*
-val file = sc.textFile("/user/3.gr")
-
-val edrdd = data.map{ed =>
-  val comps = ed.split(" ")
-  new Edge(comps(0).toInt, comps(1).toInt, comps(2).toFloat) }
-
-val gr = Graph.fromEdges(edrdd,0) 
-
-val gr2 = gr.mapEdges(ed => if (ed.srcId == 0) 5 else ed.attr) 
-=========================
-  == pregel
-
-  type MsgMap = Map[Long,Double]
-  type StateMap = Map[Int,MsgMap]
-
-  // this is to define vertex reduce
-  def addMap(msgmap1 : MsgMap, msgmap2 : MsgMap) : MsgMap = {
-    (msgmap1.keys ++ msgmap2.keys).map {
-      k => k -> math.min(msgmap1.getOrElse(k,Int.MaxValue),
-        msgmap2.getOrElse(k,Int.MaxValue)) }
-  }
- 
- */
