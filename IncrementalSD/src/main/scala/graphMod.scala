@@ -124,7 +124,7 @@ class graphMod extends java.io.Serializable {
    * neighbours, and the reduce function reduces all incoming messages to 
    * one message. Here, it is simply the min function. For landmarks, it will
    * be as in graphx docs. 
-   *          -- DEPRECATED, because of change in msg data structure,
+   *          -- NOT NEEDED, because of change in msg data structure,
    *                         use mergeMsgs()
    * */
   //private def addMaps(dist1 : Double, dist2 : Double) : Double = math.min(dist1,dist2)
@@ -308,7 +308,7 @@ class graphMod extends java.io.Serializable {
   : Graph[Vattr,Double] = {
 
 
-    // DEPRECATED
+    // NOT NEEDED
     //var g = graph.mapVertices((vid, vdata) => if (vid == 0) initVertexMsgSource
     //else initVertexMsg).cache()
 
