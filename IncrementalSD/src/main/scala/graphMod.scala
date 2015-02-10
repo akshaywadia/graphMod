@@ -48,7 +48,7 @@ class graphMod extends java.io.Serializable {
    *      gr        :   Graph[Int,Double]
    *      *return*  :   new graph with updated edge weight.
    */
-  def updateEdge(edge:String, gr:Graph[Int,Double]) : Graph[Int,Double] = {
+  def updateEdge(edge:String, gr:Graph[Vattr,Double]) : Graph[Vattr,Double] = {
     // parse edge into edge components
     val comps = edge.split(" ")
     val src = comps(0).toInt
@@ -56,9 +56,21 @@ class graphMod extends java.io.Serializable {
     val attr = comps(2).toDouble
 
     // update weight
-    return gr.mapEdges{ ed =>
+    val updatedEd = gr.mapEdges{ ed =>
       if (ed.srcId == src && ed.dstId == dst) attr else ed.attr
     }
+
+    // update affectedness
+    if (src == 0)      // root
+      return updatedEd.mapVertices{ case (vid,vattr) =>
+        val newAffected = if (vid == 0) true else vattr.participate 
+        Vattr(vattr.disturbed, 
+          true,
+          vattr.globalStage,
+          vattr.vertexStage,
+          vattr.participate,
+          vattr.distSoFar,
+
   }
 
   /****

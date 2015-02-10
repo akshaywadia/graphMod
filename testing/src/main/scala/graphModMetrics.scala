@@ -8,6 +8,9 @@ import org.apache.spark.rdd.RDD
 
 class graphMod extends java.io.Serializable {
 
+  /****
+   * TYPE DECLARATIONS for storing state information for each vertex.
+   ****/
 
   /* Messge digest. Stores all incoming messages, indexed by VertexId, for a particular stage.
    */
@@ -19,10 +22,17 @@ class graphMod extends java.io.Serializable {
   type Memo = Map[Int,MemoInfo]
 
 
-  /* Vertex attribute type -- a Tuple4, where the first component is a flag 
-   * indicating whether vertex should participate or not, the second component 
-   * is the stage number, the third is the shortest path length so far, and 
-   * the fourth component is the Memo. */
+  /* Vertex attribute type --
+   *      disturbed   :   whether this vertex was disturbed in this incremental stage or not
+   *      affected    :   whether graph update affects this vertex or not
+   *      globalStage :   global stage number
+   *      vertexStage :   the last stage vertex was active in
+   *      participate :   will this vertex send message in this stage (used to signal 
+   *                      map-reduce job)
+   *      distSoFar   :   distance so far
+   *      memo        :   Memo
+   */
+
   case class Vattr(
     disturbed : Int,
     affected : Boolean,
