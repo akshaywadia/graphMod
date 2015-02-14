@@ -4,6 +4,7 @@ import org.apache.spark.SparkConf
 import org.apache.spark._
 import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
+import java.util.Date
 
 
 class graphMod extends java.io.Serializable {
@@ -309,16 +310,6 @@ class graphMod extends java.io.Serializable {
   : Graph[Vattr,Double] = {
 
 
-    // DEPRECATED
-    //var g = graph.mapVertices((vid, vdata) => if (vid == 0) initVertexMsgSource
-    //else initVertexMsg).cache()
-
-    // compute Stage 0 messages.
-    //var messages = g.mapReduceTriplets(sendMessage, mergeMsgs)
-    //var activeMessages = messages.count()
-
-
-
     // main loop, decide when to stop -- when no new messages.
     var g = graph
     g.cache()
@@ -329,17 +320,22 @@ class graphMod extends java.io.Serializable {
     while (i < 10) {
       var messages = g.mapReduceTriplets(sendMessage, mergeMsgs)
       var activeMessages = messages.count()
-      if (dbg) {
-        println("Stage: " + i.toString)
-        println(messages.collect().mkString("\n"))
-      }
 
+      /// dbg 
+        println("*Stage: " + i.toString + " at " + new Date())
+        //println(messages.collect().mkString("\n"))
+
+
+        /// dbg
+      println("\t\t\t innerJoin : " + new Date())
       // receive messages. At this point, I am receiving messages from stage i.
       var newVerts = g.vertices.innerJoin(messages)(vertexProgram).cache()
 
       // update graph with new vertices
       prevG  = g
 
+      //// dbg
+      println("\t\t\t outerJoin : " + new Date())
       // after this point, the vertex is in stage 1.
       g = g.outerJoinVertices(newVerts) { (vid, oldAttr, newAttr) =>
         val attr = newAttr.getOrElse(oldAttr)
