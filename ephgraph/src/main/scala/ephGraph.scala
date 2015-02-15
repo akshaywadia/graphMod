@@ -101,7 +101,7 @@ class ephGraph extends java.io.Serializable {
    * Takes two MsgDigests, and merges them. Note that the '++' operator adds new keys if they
    * don't exist, or updates values if keys exist. 
    */
-  private def mergeMsgs(memoMsg : MsgDigest, newMsg : MsgDigest) : MsgDigest = 
+  def mergeMsgs(memoMsg : MsgDigest, newMsg : MsgDigest) : MsgDigest = 
     memoMsg ++ newMsg
 
   private def computeState(msgs : MsgDigest) : Double =
@@ -115,7 +115,7 @@ class ephGraph extends java.io.Serializable {
    */
   def vertexProgram(id : VertexId, memo : Memo, messages : MsgDigest) : Memo = {
     val newMsgs = mergeMsgs(memo.msgs, messages)
-    val newDist = computeState(newMsgs)
+    val newDist = if (newMsgs.isEmpty) memo.dist else computeState(newMsgs)
     return Memo(newDist, newMsgs)
     }
 
@@ -127,11 +127,15 @@ class ephGraph extends java.io.Serializable {
    *   else, not.
    */
   def sendMessage(edge: EdgeTriplet[Memo,Double]) : Iterator[(VertexId, MsgDigest)] = {
-    val potentialMsg = edge.srcAttr.dist + edge.attr
-    if (edge.dstAttr.msgs.contains(edge.srcId) && (edge.dstAttr.msgs(edge.srcId) == potentialMsg))
+    if (edge.srcAttr.dist == Double.MaxValue)
       return Iterator.empty
-    else
-      return Iterator((edge.dstId, Map(edge.srcId -> potentialMsg)))
+    else {
+      val potentialMsg = edge.srcAttr.dist + edge.attr
+      if (edge.dstAttr.msgs.contains(edge.srcId) && (edge.dstAttr.msgs(edge.srcId) == potentialMsg))
+        return Iterator.empty
+      else 
+        return Iterator((edge.dstId, Map(edge.srcId -> potentialMsg)))
+    }
   }
 
 
