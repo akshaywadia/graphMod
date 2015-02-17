@@ -11,6 +11,7 @@ http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.296.654&rep=rep1&type=p
 
 ##### Files and Directories:
 - IncrementalSD/ : Implementation of the incremental shortest distance algorithm for Spark.
+- ephgraph/ : A simplified implementation -- simplification based on using a specific case of the algorithm that works for shortest distances only.
 - spark-stream/ : Spark streaming application for consuming real-time edge updates from a Kafka queue, and computing shortest distances incrementally.
 - testing/ : Testing directory, for evaluation and metrics.
 
