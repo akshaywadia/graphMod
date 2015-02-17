@@ -21,7 +21,7 @@ object Drv {
      * string "srcId dstId weight".
      * 'file' is set to a MappedRDD object.
      */
-    val file = sc.textFile("/user/akshay/tree1024.gr")
+    val file = sc.textFile("/user/akshay/email-wt.txt")
 
 
     //  Map 'file' to EdgeRDD, by parsing records appropriately.
@@ -47,7 +47,10 @@ object Drv {
 
     //val grInit  = gr.mapVertices{ (vid,vattr) => gmod.Memo(Double.MaxValue,Map[VertexId,Double]())}
     val grSD = gmod.run(grInit)
-    gmod.saveToText("/user/akshay/delta/d", grSD) 
+    System.err.println("Starting updates... \n")
+    val grUp = gmod.updateEdge("0 736 0.115", grSD)
+    val grFinal = gmod.run(grUp)
+    gmod.saveToText("/user/akshay/delta/d2", grFinal) 
      
     //grSD.vertices.map{ case (vid,vattr) => (vid,vattr.distSoFar)}.saveAsTextFile("/user/akshay/delta/r")
 
