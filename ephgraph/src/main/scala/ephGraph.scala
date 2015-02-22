@@ -31,7 +31,7 @@ class ephGraph extends java.io.Serializable {
    ****/
 
   /*
-   * Updates edges for an existing graph.
+   * Updates edges for an existing graph. This fn should be used to update existing edges. 
    *        edge      :   String, with format "srcID dstId weight", which are Long,
    *                      Long, and Double
    *        gr        :   Graphp[Vattr,Double], the post first-run graph, i.e., 
@@ -67,6 +67,21 @@ class ephGraph extends java.io.Serializable {
     for (line <- edArray)
       g = updateEdge(line,g)
     return g
+  }
+
+  /*
+   * Create edge -- to be used when the edge does not exist.
+   *        edge      :   String -- src,dst,wt
+   *        gr        :   Post-first run graph, type Memo,Double
+   *        *return*  :   New [Memo,Double] graph with updated edge applied.
+   */
+  def ceateEdge(edge:String, gr:Graph[Memo,Double]) : Graph[Memo,Double] = {
+    val src = edge.split(" ")(0).toLong
+    val dst = edge.split(" ")(1).toLong
+    val wt = edge.split(" ")(2).toDouble
+    val newEd = sc.parallelize(Array(Edge(src,dst,wt)))
+    val defaultVertexProp = Memo(Double.MaxValue, Map[VertexId,Double]())
+    return Graph(gr.vertices, gr.edges ++ newEd, defaultVertexProp)
   }
 
   /****
