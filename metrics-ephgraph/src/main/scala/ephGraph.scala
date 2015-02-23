@@ -6,7 +6,7 @@ import org.apache.spark.graphx._
 import org.apache.spark.rdd.RDD
 
 
-class ephGraph extends java.io.Serializable {
+class ephGraphMetrics extends java.io.Serializable {
 
   /****
    * TYPE DECLARATIONS for storing state information for each vertex.
@@ -24,11 +24,15 @@ class ephGraph extends java.io.Serializable {
    * even though it can be calculated from the stored MsgDigest - just
    * to make things clear.
    */
-  case class Memo(dist : Double, msgs : MsgDigest)
+  case class Memo(disturbed : Int, dist : Double, msgs : MsgDigest)
 
   /****
    * GRAPH UPDATE FUNCTIONS
    ****/
+
+  def resetVerts(gr : Graph[Memo,Double]) : Graph[Memo,Double] = {
+    gr.mapVertices{ (vid,vattr) => Memo(0,vattr.dist,vattr.msgs) }
+  }
 
   /*
    * Updates edges for an existing graph. This fn should be used to update existing edges. 
@@ -83,7 +87,7 @@ class ephGraph extends java.io.Serializable {
     val edRdd = mapStringToEdge(edString)
     
     // Define default vertex property, in case of new vertices. 
-    val defaultVertexProp = Memo(Double.MaxValue, Map[VertexId,Double]())
+    val defaultVertexProp = new Memo(0,Double.MaxValue, Map[VertexId,Double]())
 
     // Create new graph.
     return Graph(gr.vertices, gr.edges ++ edRdd, defaultVertexProp)
@@ -136,7 +140,7 @@ class ephGraph extends java.io.Serializable {
   def vertexProgram(id : VertexId, memo : Memo, messages : MsgDigest) : Memo = {
     val newMsgs = mergeMsgs(memo.msgs, messages)
     val newDist = if (newMsgs.isEmpty) memo.dist else computeState(newMsgs)
-    return Memo(newDist, newMsgs)
+    return Memo(1, newDist, newMsgs)
     }
 
   /** HELPER FUNCTIONS for sendMessage **/
@@ -194,12 +198,17 @@ class ephGraph extends java.io.Serializable {
   def initAttr(gr : Graph[Int,Double]) : Graph[Memo,Double] =  {
     return gr.mapVertices{ (vid,vattr) => 
       val newDist = if (vid == 0) 0 else Double.MaxValue
-      new Memo(newDist,Map[VertexId,Double]())} 
+      new Memo(0, newDist,Map[VertexId,Double]())} 
     }
 
   def run(gr : Graph[Memo,Double]) : Graph[Memo,Double] = {
     val initMsg = Map[VertexId, Double]()
-    Pregel(gr,initMsg)(vertexProgram, sendMessage, mergeMsgs)
+    val grReset = resetVerts(gr)
+    Pregel(grReset,initMsg)(vertexProgram, sendMessage, mergeMsgs)
+  }
+
+  def countDisturbed(gr : Graph[Memo,Double]) : Unit = {
+    gr.vertices.filter{ case (vid,vattr) => vattr.disturbed == 1 }.saveAsTextFile("/user/akshay/delta/dd")
   }
 
   def saveToText(path : String, gr : Graph[Memo,Double]) : Unit = 

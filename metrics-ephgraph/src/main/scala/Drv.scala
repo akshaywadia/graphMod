@@ -23,11 +23,12 @@ object Drv {
      */
 
     // read graph from file
-    val gmod = new ephGraph()
+    val gmod = new ephGraphMetrics()
     val gr = gmod.readFromFile("/user/akshay/z.gr", sc)
     val grSD = gmod.run(gr)
     val grUpdated = gmod.createEdges("/user/akshay/sampEds.txt", sc, grSD)
     val grSDU = gmod.run(grUpdated)
+    gmod.countDisturbed(grSDU)
     grSDU.vertices.saveAsTextFile("/user/akshay/delta/v")
     grSDU.edges.saveAsTextFile("/user/akshay/delta/e")
 
