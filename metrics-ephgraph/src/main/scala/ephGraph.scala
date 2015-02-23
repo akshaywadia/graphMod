@@ -140,7 +140,8 @@ class ephGraphMetrics extends java.io.Serializable {
   def vertexProgram(id : VertexId, memo : Memo, messages : MsgDigest) : Memo = {
     val newMsgs = mergeMsgs(memo.msgs, messages)
     val newDist = if (newMsgs.isEmpty) memo.dist else computeState(newMsgs)
-    return Memo(1, newDist, newMsgs)
+    val newDisturbed = if (messages.isEmpty) memo.disturbed else 1
+    return Memo(newDisturbed, newDist, newMsgs)
     }
 
   /** HELPER FUNCTIONS for sendMessage **/
@@ -157,8 +158,11 @@ class ephGraphMetrics extends java.io.Serializable {
       val potentialMsg = edge.srcAttr.dist + edge.attr
       if (edge.dstAttr.msgs.contains(edge.srcId) && (edge.dstAttr.msgs(edge.srcId) == potentialMsg))
         return Iterator.empty
-      else 
+      else  {
+        System.err.println(edge.srcId.toString + " " + edge.dstId.toString + " " + potentialMsg)
+        System.err.println("\t\t" + edge.dstAttr)
         return Iterator((edge.dstId, Map(edge.srcId -> potentialMsg)))
+      }
     }
   }
 
@@ -207,10 +211,36 @@ class ephGraphMetrics extends java.io.Serializable {
     Pregel(grReset,initMsg)(vertexProgram, sendMessage, mergeMsgs)
   }
 
-  def countDisturbed(gr : Graph[Memo,Double]) : Unit = {
+  def countDisturbed(gr : Graph[Memo,Double]) : Int = {
     gr.vertices.filter{ case (vid,vattr) => vattr.disturbed == 1 }.saveAsTextFile("/user/akshay/delta/dd")
+    return gr.vertices.map{ case (vif,vattr) => vattr.disturbed}.reduce( (a,b) => a+b)
   }
 
   def saveToText(path : String, gr : Graph[Memo,Double]) : Unit = 
     gr.vertices.map{ case (vid,attr) => (vid, attr.dist) }.saveAsTextFile(path)
+
+  /* Creates an n-ary tree of degree d, and n nodes, with root 0
+   */
+  def naryTree(n : Int, d : Int, sc : SparkContext) : Graph[Memo,Double] = {
+    val vertQ = new scala.collection.mutable.Queue[VertexId]
+    var edAr : Array[Edge[Double]] = Array[Edge[Double]]()
+    vertQ += 0
+    var curr  = 1
+    var childCount = 0
+    while ( (! vertQ.isEmpty ) && curr < n) {
+      val currVert = vertQ.dequeue
+      while (curr < n && childCount < d) {
+        edAr = edAr ++ Array(new Edge(currVert,curr,1.0))
+        vertQ += curr
+        curr += 1
+        childCount += 1
+      }
+      childCount = 0
+    }
+    //val defaultVertProp = new Memo(0,Double.MaxValue, Map[VertexId,Double]())
+    val defaultVertProp = 0
+    val gr = Graph.fromEdges(sc.parallelize(edAr), defaultVertProp)
+    initAttr(gr)
+
+  } // end naryTree
 }

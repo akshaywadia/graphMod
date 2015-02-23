@@ -22,16 +22,28 @@ object Drv {
      * 'file' is set to a MappedRDD object.
      */
 
-    // read graph from file
     val gmod = new ephGraphMetrics()
+    val gr = gmod.naryTree(5,2,sc)
+    gr.vertices.saveAsTextFile("/user/akshay/delta/v/")
+    gr.edges.saveAsTextFile("/user/akshay/delta/e/")
+
+    // read graph from file
+/*    val gmod = new ephGraphMetrics()
     val gr = gmod.readFromFile("/user/akshay/z.gr", sc)
     val grSD = gmod.run(gr)
     val grUpdated = gmod.createEdges("/user/akshay/sampEds.txt", sc, grSD)
-    val grSDU = gmod.run(grUpdated)
-    gmod.countDisturbed(grSDU)
-    grSDU.vertices.saveAsTextFile("/user/akshay/delta/v")
-    grSDU.edges.saveAsTextFile("/user/akshay/delta/e")
+    //println("Starting reset...")
+    //grReset.vertices.saveAsTextFile("/user/akshay/delta/v")
+    //println("Reset done, starting run ...")
 
+    //System.err.println(grReset.vertices.collect.mkString("\n"))
+    val grSDU = gmod.run(grUpdated)
+    println("Run done, starting count ...")
+    System.err.println("Count = " + gmod.countDisturbed(grSDU).toInt)
+    println("Count done.")
+    //grSDU.vertices.saveAsTextFile("/user/akshay/delta/v")
+    //grSDU.edges.saveAsTextFile("/user/akshay/delta/e")  
+*/
   }
 
 }
